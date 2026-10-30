@@ -2,6 +2,7 @@
 # SPDX-FileCopyrightText: Copyright contributors to the vLLM project
 
 import random
+from tempfile import TemporaryDirectory
 
 import pytest
 import ray
@@ -77,18 +78,33 @@ def _all_reduce_mhc(monkeypatch, tp_size, pp_size, rank, distributed_init_port):
                 VllmConfig,
             )
             from vllm.models.deepseek_v41.nvidia.ops.mhc import supports_mhc_all_reduce
+            from vllm.transformers_utils.configs.deepseek_v41 import DeepseekV41Config
 
-            config = VllmConfig(
-                model_config=ModelConfig(
-                    "deepseek-ai/DeepSeek-V4.1-Flash-1017",
-                    revision="1bae0e1088993b9b82de08f59de5be5a34e42170",
+            with TemporaryDirectory() as model_dir:
+                DeepseekV41Config(
+                    architectures=["DeepseekV41ForCausalLM"],
                     dtype="bfloat16",
-                    skip_tokenizer_init=True,
-                ),
-                parallel_config=ParallelConfig(tensor_parallel_size=tp_size),
-                kernel_config=KernelConfig(moe_backend="humming"),
-            )
-            assert supports_mhc_all_reduce(config)
+                    hidden_size=5120,
+                    num_hidden_layers=1,
+                    num_attention_heads=8,
+                    head_dim=512,
+                    compress_ratios=[0],
+                    vocab_size=128,
+                    max_position_embeddings=128,
+                    hc_mult=4,
+                    n_routed_experts=384,
+                    num_experts_per_tok=6,
+                ).save_pretrained(model_dir)
+                config = VllmConfig(
+                    model_config=ModelConfig(
+                        model_dir,
+                        dtype="bfloat16",
+                        skip_tokenizer_init=True,
+                    ),
+                    parallel_config=ParallelConfig(tensor_parallel_size=tp_size),
+                    kernel_config=KernelConfig(moe_backend="humming"),
+                )
+                assert supports_mhc_all_reduce(config)
         op = AllReduceMHC(
             hidden_size=5120, hc_mult=4, max_num_tokens=16, top_k=6, device=device
         )
