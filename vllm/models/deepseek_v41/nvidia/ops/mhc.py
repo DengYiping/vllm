@@ -58,10 +58,22 @@ def supports_mhc_overlap(vllm_config: VllmConfig) -> bool:
 
 def supports_mhc_all_reduce(vllm_config: VllmConfig) -> bool:
     parallel = vllm_config.parallel_config
-    config = vllm_config.model_config.hf_config
+    model = vllm_config.model_config
+    config = model.hf_config
+    if current_platform.is_device_capability_family(90):
+        if not (
+            parallel.tensor_parallel_size == 8
+            and not parallel.use_ubatching
+            and vllm_config.kernel_config.moe_backend == "humming"
+            and model.dtype == torch.bfloat16
+            and config.n_routed_experts == 384
+            and config.num_experts_per_tok == 6
+        ):
+            return False
+    elif parallel.tensor_parallel_size != 4:
+        return False
     if (
-        parallel.tensor_parallel_size != 4
-        or parallel.enable_expert_parallel
+        parallel.enable_expert_parallel
         or config.hidden_size != 5120
         or config.hc_mult != 4
     ):

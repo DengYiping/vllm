@@ -69,6 +69,26 @@ def _all_reduce_mhc(monkeypatch, tp_size, pp_size, rank, distributed_init_port):
         torch.accelerator.set_device_index(device)
         init_test_distributed_environment(tp_size, pp_size, rank, distributed_init_port)
         ensure_model_parallel_initialized(tp_size, pp_size)
+        if tp_size == 8:
+            from vllm.config import (
+                KernelConfig,
+                ModelConfig,
+                ParallelConfig,
+                VllmConfig,
+            )
+            from vllm.models.deepseek_v41.nvidia.ops.mhc import supports_mhc_all_reduce
+
+            config = VllmConfig(
+                model_config=ModelConfig(
+                    "deepseek-ai/DeepSeek-V4.1-Flash-1017",
+                    revision="1bae0e1088993b9b82de08f59de5be5a34e42170",
+                    dtype="bfloat16",
+                    skip_tokenizer_init=True,
+                ),
+                parallel_config=ParallelConfig(tensor_parallel_size=tp_size),
+                kernel_config=KernelConfig(moe_backend="humming"),
+            )
+            assert supports_mhc_all_reduce(config)
         op = AllReduceMHC(
             hidden_size=5120, hc_mult=4, max_num_tokens=16, top_k=6, device=device
         )
@@ -180,6 +200,15 @@ def test_all_reduce_mhc_matches_unfused_path(monkeypatch):
     if torch.accelerator.device_count() < 4:
         pytest.skip("Requires four GPUs with NVLink multicast")
     multi_process_parallel(monkeypatch, 4, 1, _all_reduce_mhc)
+
+
+@pytest.mark.skipif(
+    not current_platform.is_device_capability_family(90), reason="Requires SM90"
+)
+def test_sm90_tp8_all_reduce_mhc_matches_unfused_path(monkeypatch):
+    if torch.accelerator.device_count() < 8:
+        pytest.skip("Requires eight GPUs with NVLink multicast")
+    multi_process_parallel(monkeypatch, 8, 1, _all_reduce_mhc)
 
 
 def _swizzled_scale_rows(scales: torch.Tensor, rows: int, cols: int) -> torch.Tensor:

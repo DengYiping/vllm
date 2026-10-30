@@ -101,6 +101,26 @@ llm = LLM(model="meta-llama/Llama-3.3-70B-Instruct", tensor_parallel_size=4)
 
 For models that are too large to fit on a single GPU (like 70B parameter models), tensor parallelism is essential.
 
+#### DeepSeek-V4.1 mHC on Hopper
+
+The standard DeepSeek-V4.1 decoder can fuse its tensor-parallel all-reduce with
+mHC input preparation on eight SM90 GPUs. This collective is eligible only for
+the BF16 Humming path with hidden size 5120, four mHC streams, 384 routed experts
+and top-6 routing. Expert parallelism and microbatching are not supported, and
+every rank needs an available NVLink multicast mapping. Unsupported
+configurations keep the unfused collective.
+
+!!! note
+    The collective also requires SM90 mHC coefficient overlap to be enabled.
+    Hopper overlap remains disabled by default; the collective eligibility
+    check alone does not enable it. Selecting `--tensor-parallel-size 8` and
+    `--moe-backend humming` is not sufficient. This is the standard decoder
+    path, not the GB300 specialized decoder.
+
+The fused path applies to steps of at most 16 tokens, including speculative
+verification positions. Larger steps use the existing fallback. These limits
+describe supported dispatch, not a throughput guarantee for arbitrary workloads.
+
 ### Pipeline Parallelism (PP)
 
 Pipeline parallelism distributes model layers across multiple GPUs. Each GPU processes different parts of the model in sequence.

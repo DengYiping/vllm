@@ -444,6 +444,8 @@ steps:
   - vllm/v1/worker/gpu_worker.py
   - tests/distributed/test_mnnvl_alltoall.py
   - tests/distributed/test_eplb_execute.py
+  - tests/distributed/test_custom_all_reduce.py
+  - vllm/models/deepseek_v41/nvidia/ops/
 
   commands:
   # https://github.com/NVIDIA/nccl/issues/1838
@@ -452,6 +454,7 @@ steps:
   - torchrun --nproc-per-node=8 ../examples/features/torchrun/torchrun_dp_example_offline.py --tp-size=2 --pp-size=1 --dp-size=4 --enable-ep
   # The L4 EPLB Execution job has no NVLink, so it skips symm_mem.
   - pytest -v -s distributed/test_eplb_execute.py -k symm_mem
+  - pytest -v -s distributed/test_custom_all_reduce.py::test_sm90_tp8_all_reduce_mhc_matches_unfused_path
   mirror:
     amd:
       automatic_shard: true
